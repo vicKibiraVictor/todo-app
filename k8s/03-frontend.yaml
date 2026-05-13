@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: YOUR_DOCKERHUB_USERNAME/todo-frontend:latest
+          image: ahonakibira/todo-frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80
