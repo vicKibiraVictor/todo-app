@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────
+#  OpenSearch values
+#  Single-node setup for Minikube / Codespaces
+# ─────────────────────────────────────────────────────
+
+# Single node (saves resources on Codespaces)
+singleNode: true
+replicas: 1
+
+# Disable security for local dev (enable + configure certs for production)
+config:
+  opensearch.yml: |
+    cluster.name: taskflow-logs
+    network.host: 0.0.0.0
+    plugins.security.disabled: true
+
+# Resources
+resources:
+  requests:
+    cpu: 300m
+    memory: 1Gi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+# JVM heap — set to half of memory limit
+extraEnvs:
+  - name: OPENSEARCH_JAVA_OPTS
+    value: "-Xms512m -Xmx512m"
+  - name: DISABLE_SECURITY_PLUGIN
+    value: "true"
+  - name: DISABLE_INSTALL_DEMO_CONFIG
+    value: "true"
+
+# Persistence
+persistence:
+  enabled: true
+  size: 5Gi
+
+# Required for OpenSearch on Linux
+sysctlInit:
+  enabled: true
+
+# Readiness / liveness (generous timeouts for slow Codespaces startup)
+startupProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 30
+
+readinessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 10

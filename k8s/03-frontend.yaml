@@ -16,10 +16,54 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: YOUR_DOCKERHUB_USERNAME/todo-frontend:latest
+          image: ahonakibira/todo-frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+          # ── startupProbe ─────────────────────────────────────────────────
+          # Gives nginx up to 20s to fully start before other probes run.
+          # failureThreshold * periodSeconds = 10 * 2 = 20s max
+          startupProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 2
+            failureThreshold: 10
+            timeoutSeconds: 2
+
+          # ── readinessProbe ───────────────────────────────────────────────
+          # Removes pod from Service if nginx stops serving.
+          # Checks that the React app index.html is actually being served.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+            timeoutSeconds: 3
+
+          # ── livenessProbe ────────────────────────────────────────────────
+          # Restarts the container if nginx becomes completely unresponsive.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+            timeoutSeconds: 5
 
 ---
 # Frontend Service (NodePort - accessible from browser)

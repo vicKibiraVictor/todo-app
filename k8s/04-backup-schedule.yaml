@@ -1,0 +1,49 @@
+# =============================================================================
+# 04-backup-schedule.yaml
+# Velero schedules for the todo-app namespace
+# =============================================================================
+
+# ── Daily full namespace backup ───────────────────────────────────────────────
+# Backs up every Kubernetes object in the todo-app namespace:
+# Deployments, Services, Secrets, PVCs, ConfigMaps, etc.
+# Keeps 7 daily backups before rotating.
+# Runs at 02:00 UTC every day.
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: todo-app-daily
+  namespace: velero
+spec:
+  schedule: "0 2 * * *"        # 02:00 UTC daily
+  template:
+    includedNamespaces:
+      - todo-app
+    storageLocation: default
+    ttl: 168h                   # 7 days retention (7 * 24h)
+    snapshotVolumes: false
+    metadata:
+      labels:
+        backup-type: daily
+        app: todo-app
+
+---
+# ── Hourly backup (last 24 hours kept) ───────────────────────────────────────
+# Faster recovery window — if something breaks you lose at most 1 hour of state.
+# Keeps 24 hourly backups before rotating.
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: todo-app-hourly
+  namespace: velero
+spec:
+  schedule: "0 * * * *"        # top of every hour
+  template:
+    includedNamespaces:
+      - todo-app
+    storageLocation: default
+    ttl: 24h                   # 24 hours retention
+    snapshotVolumes: false
+    metadata:
+      labels:
+        backup-type: hourly
+        app: todo-app

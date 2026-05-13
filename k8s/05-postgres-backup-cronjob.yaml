@@ -1,0 +1,127 @@
+# =============================================================================
+# 05-postgres-backup-cronjob.yaml
+# CronJob: pg_dump every 6 hours → compressed SQL file → MinIO bucket
+# =============================================================================
+
+# ── ServiceAccount for the backup job ────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres-backup-sa
+  namespace: todo-app
+
+---
+# ── CronJob: pg_dump every 6 hours ───────────────────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: todo-app
+spec:
+  schedule: "0 */6 * * *"          # every 6 hours: 00:00, 06:00, 12:00, 18:00 UTC
+  concurrencyPolicy: Forbid         # never run two backup jobs at the same time
+  successfulJobsHistoryLimit: 5     # keep logs of last 5 successful jobs
+  failedJobsHistoryLimit: 3         # keep logs of last 3 failed jobs
+  jobTemplate:
+    spec:
+      # Retry once on failure before marking as failed
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app: postgres-backup
+        spec:
+          serviceAccountName: postgres-backup-sa
+          restartPolicy: OnFailure
+
+          containers:
+            - name: pg-backup
+              # postgres:15-alpine has pg_dump + psql built in
+              image: postgres:15-alpine
+              env:
+                # DB connection — pulled from the existing secret
+                - name: PGHOST
+                  value: postgres
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secret
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secret
+                      key: POSTGRES_PASSWORD
+                - name: PGDATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secret
+                      key: POSTGRES_DB
+                # MinIO connection
+                - name: MINIO_ENDPOINT
+                  value: "http://minio.minio.svc.cluster.local:9000"
+                - name: MINIO_ACCESS_KEY
+                  value: "minio"
+                - name: MINIO_SECRET_KEY
+                  value: "minio123"
+                - name: MINIO_BUCKET
+                  value: "todo-backups"
+
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+
+                  # ── 1. Generate timestamped filename ──────────────────────
+                  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  FILENAME="postgres_${TIMESTAMP}.sql.gz"
+                  echo "Starting backup: ${FILENAME}"
+
+                  # ── 2. Run pg_dump and compress ───────────────────────────
+                  pg_dump \
+                    --no-password \
+                    --format=plain \
+                    --no-owner \
+                    --no-privileges \
+                    "${PGDATABASE}" | gzip > /tmp/${FILENAME}
+
+                  FILESIZE=$(du -sh /tmp/${FILENAME} | cut -f1)
+                  echo "Dump complete: ${FILESIZE}"
+
+                  # ── 3. Install MinIO client (mc) ──────────────────────────
+                  wget -q https://dl.min.io/client/mc/release/linux-amd64/mc \
+                    -O /usr/local/bin/mc
+                  chmod +x /usr/local/bin/mc
+
+                  # ── 4. Upload to MinIO ────────────────────────────────────
+                  mc alias set backup ${MINIO_ENDPOINT} \
+                    ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY} --api S3v4
+
+                  mc cp /tmp/${FILENAME} backup/${MINIO_BUCKET}/postgres/${FILENAME}
+                  echo "Uploaded to MinIO: ${MINIO_BUCKET}/postgres/${FILENAME}"
+
+                  # ── 5. Keep only the last 28 dumps (7 days × 4/day) ───────
+                  echo "Pruning old backups (keeping last 28)..."
+                  mc ls backup/${MINIO_BUCKET}/postgres/ \
+                    | sort \
+                    | head -n -28 \
+                    | awk '{print $NF}' \
+                    | while read f; do
+                        mc rm backup/${MINIO_BUCKET}/postgres/${f}
+                        echo "  Deleted old backup: ${f}"
+                      done
+
+                  # ── 6. Verify the upload is readable ─────────────────────
+                  mc ls backup/${MINIO_BUCKET}/postgres/${FILENAME}
+                  echo "✅ Backup complete: ${FILENAME} (${FILESIZE})"
+
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "128Mi"

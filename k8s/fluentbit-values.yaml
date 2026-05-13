@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────
+#  Fluent Bit values
+#  Collects logs from ALL pods → ships to OpenSearch
+#  Separate indices per namespace for easy filtering
+# ─────────────────────────────────────────────────────
+
+# Run as DaemonSet so every node's logs are captured
+kind: DaemonSet
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Tolerations — run on all nodes including control-plane
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+config:
+  # ── Input: tail all container logs ──────────────
+  inputs: |
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/*.log
+        multiline.parser  docker, cri
+        Tag               kube.*
+        Mem_Buf_Limit     5MB
+        Skip_Long_Lines   On
+
+  # ── Filters: enrich with K8s metadata ──────────
+  filters: |
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Kube_Tag_Prefix     kube.var.log.containers.
+        Merge_Log           On
+        Merge_Log_Key       log_processed
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+        Labels              On
+        Annotations         Off
+
+    # Drop noisy health-check logs from nginx/backend
+    [FILTER]
+        Name    grep
+        Match   kube.*
+        Exclude log /health
+
+  # ── Output: send to OpenSearch ─────────────────
+  outputs: |
+    [OUTPUT]
+        Name                     opensearch
+        Match                    kube.*
+        Host                     opensearch-cluster-master.logging.svc.cluster.local
+        Port                     9200
+        Index                    taskflow-logs
+        Logstash_Format          On
+        Logstash_Prefix          kube
+        Logstash_DateFormat      %Y.%m.%d
+        Replace_Dots             On
+        Retry_Limit              False
+        tls                      Off
+        tls.verify               Off
+        Suppress_Type_Name       On
+
+  # ── Parsers ────────────────────────────────────
+  customParsers: |
+    [PARSER]
+        Name        json_log
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   On
+
+    [PARSER]
+        Name        app_log
+        Format      regex
+        Regex       ^(?<level>\w+)\s+(?<time>[^ ]+)\s+(?<message>.+)$
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S
+
+# RBAC — needs read access to pods/namespaces
+rbac:
+  create: true
+  nodeAccess: true

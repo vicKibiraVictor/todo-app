@@ -1,0 +1,130 @@
+# ─────────────────────────────────────────────────────
+#  kube-prometheus-stack values
+#  Tuned for Minikube on GitHub Codespaces (4CPU/7GB)
+# ─────────────────────────────────────────────────────
+
+# ── Grafana ───────────────────────────────────────────
+grafana:
+  enabled: true
+  adminPassword: "taskflow-grafana"   # change in production
+
+  # Codespaces-friendly resource limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+  # Persistence (keeps dashboards across restarts)
+  persistence:
+    enabled: true
+    size: 1Gi
+
+  # Pre-load our custom dashboards from ConfigMap
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+
+  # Default dashboards to install
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: UTC
+
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/"
+    auth.anonymous:
+      enabled: false
+
+# ── Prometheus ────────────────────────────────────────
+prometheus:
+  enabled: true
+  prometheusSpec:
+    # Scrape all namespaces (picks up todo-app automatically)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+    # Retention: 15 days
+    retention: 15d
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+# ── Alertmanager ──────────────────────────────────────
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+# ── Node Exporter (host-level metrics) ───────────────
+nodeExporter:
+  enabled: true
+
+# ── Kube State Metrics (K8s object metrics) ──────────
+kubeStateMetrics:
+  enabled: true
+
+# ── Default scrape rules ──────────────────────────────
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false          # not exposed in Minikube
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: true
+    kubeApiserverHistogram: true
+    kubeApiserverSlos: true
+    kubeControllerManager: false  # not exposed in Minikube
+    kubelet: true
+    kubeProxy: false              # not exposed in Minikube
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeSchedulerAlerting: false  # not exposed in Minikube
+    kubeSchedulerRecording: false
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+# ── Disable components not available in Minikube ──────
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false

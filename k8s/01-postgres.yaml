@@ -65,11 +65,51 @@ spec:
           volumeMounts:
             - name: pgdata
               mountPath: /var/lib/postgresql/data
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # ── startupProbe ────────────────────────────────────────────────
+          # Gives postgres up to 60s to initialise on first boot
+          # (runs BEFORE readiness/liveness kick in)
+          # failureThreshold * periodSeconds = 30 * 2 = 60s max
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "tododb"]
+            initialDelaySeconds: 5
+            periodSeconds: 2
+            failureThreshold: 30
+            timeoutSeconds: 1
+
+          # ── readinessProbe ───────────────────────────────────────────────
+          # Removes pod from Service endpoints if postgres can't accept connections.
+          # Backend pods will not receive traffic until this passes.
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "postgres"]
+              command: ["pg_isready", "-U", "postgres", "-d", "tododb"]
             initialDelaySeconds: 5
             periodSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+            timeoutSeconds: 2
+
+          # ── livenessProbe ────────────────────────────────────────────────
+          # Restarts the container if postgres stops accepting connections
+          # entirely (e.g. deadlock / OOM). Longer period so it doesn't
+          # restart a healthy-but-busy DB unnecessarily.
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "tododb"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+            timeoutSeconds: 3
+
       volumes:
         - name: pgdata
           persistentVolumeClaim:

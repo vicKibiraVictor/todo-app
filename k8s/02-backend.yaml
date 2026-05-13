@@ -42,12 +42,53 @@ spec:
                   key: POSTGRES_DB
             - name: PORT
               value: "5000"
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          # ── startupProbe ─────────────────────────────────────────────────
+          # Gives Node.js up to 40s to connect to postgres and run initDB()
+          # before readiness/liveness probes begin.
+          # failureThreshold * periodSeconds = 20 * 2 = 40s max
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 2
+            failureThreshold: 20
+            timeoutSeconds: 2
+
+          # ── readinessProbe ───────────────────────────────────────────────
+          # Removes pod from Service load balancer if /health fails.
+          # Prevents traffic reaching a pod that lost its DB connection.
           readinessProbe:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 5
             periodSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+            timeoutSeconds: 3
+
+          # ── livenessProbe ────────────────────────────────────────────────
+          # Restarts the container if it becomes completely unresponsive
+          # (e.g. event loop blocked, process hung).
+          # Longer period + higher threshold avoids restart loops on slow DB.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 4
+            timeoutSeconds: 5
 
 ---
 # Backend Service (ClusterIP)
