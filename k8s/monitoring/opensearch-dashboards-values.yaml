@@ -1,18 +1,13 @@
-# ─────────────────────────────────────────────────────
-#  OpenSearch Dashboards values
-#  Connects to the OpenSearch single-node instance
-# ─────────────────────────────────────────────────────
-
 replicas: 1
 
-opensearchHosts: "http://opensearch-cluster-master:9200"
+opensearchHosts:
+  - "http://opensearch-cluster-master:9200"
 
 config:
   opensearch_dashboards.yml: |
     server.host: "0.0.0.0"
     opensearch.hosts: ["http://opensearch-cluster-master:9200"]
     opensearch.ssl.verificationMode: none
-    opensearch_security.disabled: true
 
 resources:
   requests:
@@ -22,7 +17,6 @@ resources:
     cpu: 300m
     memory: 512Mi
 
-# Service
 service:
   type: ClusterIP
   port: 5601

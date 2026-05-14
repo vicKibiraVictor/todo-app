@@ -1,47 +1,47 @@
-# ─────────────────────────────────────────────────────
-#  OpenSearch values
-#  Single-node setup for Minikube / Codespaces
-# ─────────────────────────────────────────────────────
-
 singleNode: true
 replicas: 1
 
+clusterName: taskflow-logs
+
+# Disable security completely for local dev
 config:
   opensearch.yml: |
     cluster.name: taskflow-logs
     network.host: 0.0.0.0
+    discovery.type: single-node
     plugins.security.disabled: true
 
+# Much lighter resources for Codespaces
 resources:
   requests:
-    cpu: 300m
-    memory: 1Gi
+    cpu: 100m
+    memory: 512Mi
   limits:
-    cpu: 1000m
-    memory: 2Gi
+    cpu: 500m
+    memory: 1Gi
 
-# Proper JVM config (DO NOT duplicate in extraEnvs)
-opensearchJavaOpts: "-Xms512m -Xmx512m"
+# Smaller JVM heap
+opensearchJavaOpts: "-Xms256m -Xmx256m"
 
 extraEnvs:
-  - name: DISABLE_SECURITY_PLUGIN
-    value: "true"
   - name: DISABLE_INSTALL_DEMO_CONFIG
     value: "true"
 
+# Disable persistence for local dev
 persistence:
-  enabled: true
-  size: 5Gi
+  enabled: false
 
+# Required on Linux
 sysctlInit:
   enabled: true
 
+# Extra startup time
 startupProbe:
-  initialDelaySeconds: 30
-  periodSeconds: 10
-  failureThreshold: 30
+  initialDelaySeconds: 60
+  periodSeconds: 15
+  failureThreshold: 40
 
 readinessProbe:
-  initialDelaySeconds: 30
-  periodSeconds: 10
-  failureThreshold: 10
+  initialDelaySeconds: 60
+  periodSeconds: 15
+  failureThreshold: 20
